@@ -1,0 +1,317 @@
+---
+title: "STATS 205P HW3"
+author: "Chuqi Wang 79167724"
+date: "2024-05-20"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Q1:
+```{r}
+library(readr)
+getwd()
+setwd("/Users/chuqiwang/Desktop/UCI/STATS205P/hw3")
+data = read.csv("kid-iq.csv")
+```
+(a)
+```{r}
+# Load necessary libraries
+library(rstan)
+
+# Define the Stan model for Model 1: kidScore ~ momHs + momIq
+stan_model1 <- "
+data {
+  int<lower=0> N;          // number of observations
+  vector[N] kidScore;      // dependent variable
+  vector[N] momHs;         // independent variable momHs
+  vector[N] momIq;         // independent variable momIq
+}
+parameters {
+  real alpha;              // intercept
+  real beta_momHs;         // coefficient for momHs
+  real beta_momIq;         // coefficient for momIq
+  real<lower=0> sigma;     // error scale
+}
+model {
+  // Priors
+  alpha ~ normal(0, 1000);
+  beta_momHs ~ normal(0, 1000);
+  beta_momIq ~ normal(0, 1000);
+  sigma ~ scaled_inv_chi_square(1, 0.05);
+  
+  // Likelihood
+  kidScore ~ normal(alpha + beta_momHs * momHs + beta_momIq * momIq, sigma);
+}
+"
+
+# Define the Stan model for Model 2: kidScore ~ momHs + momIq + momAge
+stan_model2 <- "
+data {
+  int<lower=0> N;          // number of observations
+  vector[N] kidScore;      // dependent variable
+  vector[N] momHs;         // independent variable momHs
+  vector[N] momIq;         // independent variable momIq
+  vector[N] momAge;        // independent variable momAge
+}
+parameters {
+  real alpha;              // intercept
+  real beta_momHs;         // coefficient for momHs
+  real beta_momIq;         // coefficient for momIq
+  real beta_momAge;        // coefficient for momAge
+  real<lower=0> sigma;     // error scale
+}
+model {
+  // Priors
+  alpha ~ normal(0, 1000);
+  beta_momHs ~ normal(0, 1000);
+  beta_momIq ~ normal(0, 1000);
+  beta_momAge ~ normal(0, 1000);
+  sigma ~ scaled_inv_chi_square(1, 0.05);
+  
+  // Likelihood
+  kidScore ~ normal(alpha + beta_momHs * momHs + beta_momIq * momIq + beta_momAge * momAge, sigma);
+}
+"
+
+# Prepare the data for Stan
+stan_data1 <- list(
+  N = nrow(data),
+  kidScore = data$kidScore,
+  momHs = data$momHs,
+  momIq = data$momIq
+)
+
+stan_data2 <- list(
+  N = nrow(data),
+  kidScore = data$kidScore,
+  momHs = data$momHs,
+  momIq = data$momIq,
+  momAge = data$momAge
+)
+
+fit1 <- stan(model_code = stan_model1, data = stan_data1)
+fit2 <- stan(model_code = stan_model2, data = stan_data2)
+
+```
+```{r}
+fit1
+```
+```{r}
+fit2
+```
+For model 1 and 2 we set priors to be as follow:
+$$\sigma^2\sim Inv-\chi^2(1, 0.5)$$
+$$\beta_j\sim N(0,1000)$$
+By applying MCMC, for M1, we found that the estimated model is given by:
+$$\widehat{kidScore}=25.93 + 5.96momHs+0.56momIq$$
+The posterior distribution of M1 are given by:
+$$\beta_0\sim N(25.93, 6.04^2)$$
+$$\beta_1\sim N(5.96, 2.21^2)$$
+$$\beta_2\sim N(0.56, 0.06^2)$$
+$$\sigma^2\sim Inv-\chi^2(18.17, 0.62^2)$$
+
+For M2, we found that the estimated model is given by:
+$$\widehat{kidScore}=20.92 + 5.59momHs+0.56momIq+0.23momAge$$
+The posterior distribution of M2 are given by:
+$$\beta_0\sim N(20.92, 6.04^2)$$
+$$\beta_1\sim N(5.59, 2.31^2)$$
+$$\beta_2\sim N(0.56, 0.06^2)$$
+$$\beta_3\sim N(0.23, 0.34^2)$$
+$$\sigma^2\sim Inv-\chi^2(18.16, 0.62^2)$$
+
+(b)
+```{r}
+stan_model1 <- "
+data {
+  int<lower=0> N;
+  vector[N] kidScore;
+  vector[N] momHs;
+  vector[N] momIq;
+}
+parameters {
+  real alpha;
+  real beta_momHs;
+  real beta_momIq;
+  real<lower=0> sigma;
+}
+model {
+  alpha ~ normal(0, 1000);
+  beta_momHs ~ normal(0, 1000);
+  beta_momIq ~ normal(0, 1000);
+  sigma ~ scaled_inv_chi_square(1, 0.05);
+  
+  kidScore ~ normal(alpha + beta_momHs * momHs + beta_momIq * momIq, sigma);
+}
+generated quantities {
+  vector[N] y_rep;
+  for (n in 1:N)
+    y_rep[n] = normal_rng(alpha + beta_momHs * momHs[n] + beta_momIq * momIq[n], sigma);
+}
+"
+
+stan_model2 <- "
+data {
+  int<lower=0> N;
+  vector[N] kidScore;
+  vector[N] momHs;
+  vector[N] momIq;
+  vector[N] momAge;
+}
+parameters {
+  real alpha;
+  real beta_momHs;
+  real beta_momIq;
+  real beta_momAge;
+  real<lower=0> sigma;
+}
+model {
+  alpha ~ normal(0, 1000);
+  beta_momHs ~ normal(0, 1000);
+  beta_momIq ~ normal(0, 1000);
+  beta_momAge ~ normal(0, 1000);
+  sigma ~ scaled_inv_chi_square(1, 0.05);
+  
+  kidScore ~ normal(alpha + beta_momHs * momHs + beta_momIq * momIq + beta_momAge * momAge, sigma);
+}
+generated quantities {
+  vector[N] y_rep;
+  for (n in 1:N)
+    y_rep[n] = normal_rng(alpha + beta_momHs * momHs[n] + beta_momIq * momIq[n] + beta_momAge * momAge[n], sigma);
+}
+"
+```
+
+```{r}
+fit1 <- stan(model_code = stan_model1, data = stan_data1)
+fit2 <- stan(model_code = stan_model2, data = stan_data2)
+```
+
+```{r}
+y_rep1 <- extract(fit1)$y_rep
+y_rep2 <- extract(fit2)$y_rep
+
+means1 <- apply(y_rep1, 1, mean)
+means2 <- apply(y_rep2, 1, mean)
+
+observed_mean <- mean(data$kidScore)
+print(observed_mean)
+```
+
+```{r}
+hist(means1, main="Model 1: Distribution of Simulated Means", xlab="Mean of kidScore")
+abline(v=observed_mean, col="red", lwd=2)
+
+hist(means2, main="Model 2: Distribution of Simulated Means", xlab="Mean of kidScore")
+abline(v=observed_mean, col="red", lwd=2)
+```
+The observed mean of kidScore is 86.79724. For each model, by simulating 100 datasets, the distribution of simulated means for both M1 and M2 are shown above.
+
+(c)
+```{r}
+# Split the data into training and testing sets
+train_data <- data[1:300, ]
+test_data <- data[301:434, ]
+
+stan_data1_train <- list(
+  N = nrow(train_data),
+  kidScore = train_data$kidScore,
+  momHs = train_data$momHs,
+  momIq = train_data$momIq
+)
+
+stan_data2_train <- list(
+  N = nrow(train_data),
+  kidScore = train_data$kidScore,
+  momHs = train_data$momHs,
+  momIq = train_data$momIq,
+  momAge = train_data$momAge
+)
+
+# Define the Stan model for Model 1: kidScore ~ momHs + momIq
+stan_model1 <- "
+data {
+  int<lower=0> N;          // number of observations
+  vector[N] kidScore;      // dependent variable
+  vector[N] momHs;         // independent variable momHs
+  vector[N] momIq;         // independent variable momIq
+}
+parameters {
+  real alpha;              // intercept
+  real beta_momHs;         // coefficient for momHs
+  real beta_momIq;         // coefficient for momIq
+  real<lower=0> sigma;     // error scale
+}
+model {
+  // Priors
+  alpha ~ normal(0, 1000);
+  beta_momHs ~ normal(0, 1000);
+  beta_momIq ~ normal(0, 1000);
+  sigma ~ scaled_inv_chi_square(1, 0.05);
+  
+  // Likelihood
+  kidScore ~ normal(alpha + beta_momHs * momHs + beta_momIq * momIq, sigma);
+}
+"
+
+# Define the Stan model for Model 2: kidScore ~ momHs + momIq + momAge
+stan_model2 <- "
+data {
+  int<lower=0> N;          // number of observations
+  vector[N] kidScore;      // dependent variable
+  vector[N] momHs;         // independent variable momHs
+  vector[N] momIq;         // independent variable momIq
+  vector[N] momAge;        // independent variable momAge
+}
+parameters {
+  real alpha;              // intercept
+  real beta_momHs;         // coefficient for momHs
+  real beta_momIq;         // coefficient for momIq
+  real beta_momAge;        // coefficient for momAge
+  real<lower=0> sigma;     // error scale
+}
+model {
+  // Priors
+  alpha ~ normal(0, 1000);
+  beta_momHs ~ normal(0, 1000);
+  beta_momIq ~ normal(0, 1000);
+  beta_momAge ~ normal(0, 1000);
+  sigma ~ scaled_inv_chi_square(1, 0.05);
+  
+  // Likelihood
+  kidScore ~ normal(alpha + beta_momHs * momHs + beta_momIq * momIq + beta_momAge * momAge, sigma);
+}
+"
+
+fit1 <- stan(model_code = stan_model1, data = stan_data1_train)
+fit2 <- stan(model_code = stan_model2, data = stan_data2_train)
+```
+
+```{r}
+posterior1 <- extract(fit1)
+posterior2 <- extract(fit2)
+
+predictions1 <- mean(posterior1$alpha) + mean(posterior1$beta_momHs) * test_data$momHs +
+  mean(posterior1$beta_momIq) * test_data$momIq
+predictions2 <- mean(posterior2$alpha) + mean(posterior2$beta_momHs) * test_data$momHs +
+  mean(posterior2$beta_momIq) * test_data$momIq + mean(posterior2$beta_momAge) * test_data$momAge
+
+
+rmse1 <- sqrt(mean((predictions1 - test_data$kidScore)^2))
+rmse2 <- sqrt(mean((predictions2 - test_data$kidScore)^2))
+
+cat("RMSE for Model 1: ", rmse1, "\n")
+cat("RMSE for Model 2: ", rmse2, "\n")
+
+```
+```{r}
+library(caret)
+RMSE(predictions1, test_data$kidScore)
+RMSE(predictions2, test_data$kidScore)
+```
+
+By splitting the data into 300 training data and 134 test data for two models, we foudn that the root mean squared error for model 1 is 19.48887 and for model 2 is 19.48533. 

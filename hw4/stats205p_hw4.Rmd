@@ -1,0 +1,215 @@
+---
+title: "STATS 205P HW4"
+author: "Chuqi Wang 79167724"
+date: "2024-05-30"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Q1:
+```{r}
+getwd()
+pima_data = read.csv("pima.csv", header = TRUE)
+head(pima_data)
+```
+Given that the outcome variable diabetic is the response and covariates are bp, bmi and age. Suppose $y_i$ is binary outcome variable (0 or 1, indicating whether a person is diabetic). Then $y_i$ follows bernoulli distribution, our generalized linear model will have logit link function. Then the likelihood of our model is given by:
+$$y_i \sim Bernoulli(p_i)$$
+$$p_i = \frac{exp(\alpha+X_i\beta)}{1+exp(\alpha+X_i\beta)}$$
+
+The priors are given by:
+$$\alpha \sim N(0, 1000)$$
+$$\beta_j \sim N(0, 1000) \;for\;j=1,2,3$$
+
+The logistic regression model is given by:
+$$g(p_i)=log(\frac{p_i}{1-p_i})=\alpha+X_i\beta=\alpha+bp_i\cdot\beta_1+bmi_i\cdot\beta_2+age_i\cdot\beta_3$$
+
+```{r}
+library(rstan)
+library(ggplot2)
+library(dplyr)
+
+pima_data <- pima_data %>%
+  select(diabetic, bp, bmi, age)
+
+stan_data1 <- list(
+  N = nrow(pima_data),
+  y = pima_data$diabetic,
+  X = as.matrix(pima_data[, c("bp", "bmi", "age")])
+)
+```
+
+```{r}
+# Define the Stan model
+stan_model1 <- "
+data {
+  int<lower=0> N;          // number of observations
+  int<lower=0, upper=1> y[N]; // binary outcome variable
+  matrix[N, 3] X;          // matrix of predictors
+}
+parameters {
+  vector[3] beta;          // coefficients for predictors
+  real alpha;              // intercept
+}
+model {
+  // Priors
+  alpha ~ normal(0, 10000);
+  beta ~ normal(0, 10000);
+  
+  // Likelihood
+  y ~ bernoulli_logit(alpha + X * beta);
+}
+"
+```
+
+```{r}
+fit1 = stan(model_code = stan_model1, data = stan_data1)
+```
+
+```{r}
+summary(fit1)
+```
+
+
+```{r}
+print(fit1)
+```
+
+
+
+```{r}
+posterior <- extract(fit1)
+alpha_posterior <- posterior$alpha
+beta_posterior <- posterior$beta
+
+print(mean(alpha_posterior))
+print(mean(beta_posterior[, 1])) # bp
+print(mean(beta_posterior[, 2])) # bmi
+print(mean(beta_posterior[, 3])) # age
+```
+The posterior distributions are shown below.
+
+```{r}
+traceplot(fit1, inc_warmup = TRUE)
+plot(fit1, plotfun = "hist")
+```
+After MCMC, the posterior distributions of $\alpha$, $\beta_1$, $\beta_2$ and $\beta_3$ are given by:
+$$\alpha\sim N(-5.10, 0.54^2)$$
+$$\beta_1\sim N(-0.01, 0)$$
+$$\beta_2\sim N(0.1, 0.01^2)$$
+$$\beta_3\sim N(0.05, 0.01^2)$$
+
+we found that our logistic regression model is given by: 
+
+$$\hat{p_i}=\frac{exp(\hat{\eta_i})}{1+exp(\hat{\eta_i})}$$ where
+$$\hat{\eta_i}=-5.10-bp_i\cdot0.01+bmi_i\cdot0.1+age_i\cdot0.05$$
+Credible intervals for model parameters:
+
+```{r}
+# Compute 95% credible intervals
+alpha_ci <- quantile(posterior$alpha, probs = c(0.025, 0.975))
+beta_ci <- apply(posterior$beta, 2, function(x) quantile(x, probs = c(0.025, 0.975)))
+
+# Print credible intervals
+print(alpha_ci)
+print(beta_ci)
+```
+The 95\% credible interval for $\alpha$ is (-6.142455, -4.067584). This suggests that the baseline log odds of being diabetic, when all predictors are zero, is significantly less than zero. For $\beta_1$ is (-0.01885, 0.00016) which includes 0 which means that diastolic blood pressure(bp) may not have a significant effect on the likelihood of being diabetic in this dataset. For $\beta_2$ is (0.08064, 0.13043), this suggests a significant positive effect of body mass index on the likelihood of being diabetic. For $\beta_3$ is (0.03462, 0.06343), which does not include zero. This indicates a significant positive effect of age on the likelihood of being diabetic.
+
+
+## Q2:
+```{r}
+absent_data = read.table("absent.txt", header = TRUE)
+head(absent_data)
+```
+
+In a Poisson regression model, the expected value of the count variable $y_i$ is related to a set of predictor variables $X_i$ via a log link function. The model can be expressed as:
+$$y_i \sim Poisson(\lambda_i)$$ where $\lambda_i$ is the rate parameter of the Poisson distribution, and it is modeled as:
+$$log(\lambda_i)=\alpha+\beta_1\cdot male_i+\beta_2\cdot math_i+\beta_3\cdot langarts_i$$
+The priors are given by:
+$$\alpha \sim N(0, 1000)$$
+$$\beta_j \sim N(0, 1000) \;for\;j=1,2,3$$
+
+```{r}
+# Define the Stan model as a string
+stan_model2 <- "
+data {
+  int<lower=0> N;              // number of observations
+  int<lower=0> y[N];           // outcome variable (daysabs)
+  matrix[N, 3] X;              // predictor matrix (male, math, langarts)
+}
+parameters {
+  real alpha;                  // intercept
+  vector[3] beta;              // coefficients for predictors
+}
+model {
+  alpha ~ normal(0, 1000);
+  beta ~ normal(0, 1000);
+  y ~ poisson_log(alpha + X * beta);
+}
+"
+
+```
+
+```{r}
+stan_data2 <- list(
+  N = nrow(absent_data),
+  y = absent_data$daysabs,
+  X = as.matrix(absent_data[, c('male', 'math', 'langarts')])
+)
+
+```
+
+```{r}
+fit2 = stan(model_code = stan_model2, data = stan_data2)
+```
+
+
+```{r}
+summary(fit2)
+```
+```{r}
+print(fit2)
+```
+
+```{r}
+posterior <- extract(fit2)
+alpha_posterior <- posterior$alpha
+beta_posterior <- posterior$beta
+
+print(mean(alpha_posterior))
+print(mean(beta_posterior[, 1])) # male
+print(mean(beta_posterior[, 2])) # math
+print(mean(beta_posterior[, 3])) # langarts
+```
+```{r}
+traceplot(fit2, inc_warmup = TRUE)
+plot(fit2, plotfun = "hist")
+```
+After MCMC, the posterior distributions of $\alpha$, $\beta_1$, $\beta_2$ and $\beta_3$ are given by:
+$$\alpha\sim N(2.57, 0.08^2)$$
+$$\beta_1\sim N(-0.53, 0.06^2)$$
+$$\beta_2\sim N(0, 0)$$
+$$\beta_3\sim N(0, 0)$$
+And our poisson regression model is given by:
+$$\hat{\lambda_i}=exp(\hat{\eta_i})=exp(2.57-0.53\cdot male_i)$$
+Credible intervals for model parameters:
+
+```{r}
+# Compute 95% credible intervals
+alpha_ci <- quantile(posterior$alpha, probs = c(0.025, 0.975))
+beta_ci <- apply(posterior$beta, 2, function(x) quantile(x, probs = c(0.025, 0.975)))
+
+# Print credible intervals
+print(alpha_ci)
+print(beta_ci)
+```
+The 95\% credible interval for $\alpha$ is (2.406966, 2.732167). This suggests that the baseline log rate of days absent, when all predictors are zero, is significantly greater than zero. For $\beta_1$ is (-0.6388425, -0.6388425) indicating that being male may have a positive effect on the number of days absent, though the effect is small. For $\beta_2$ is (-0.007995, 0.000492) which includes 0, suggesting that math test scores may not have a significant effect on the number of days absent. For $\beta_3$ is (-0.00617, 0.00296) which also includes 0 indicating that language arts test scores may not have a significant effect on the number of days absent.
+
+
+
+

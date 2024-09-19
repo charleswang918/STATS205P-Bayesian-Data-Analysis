@@ -1,0 +1,160 @@
+---
+title: "STATS 205P HW2"
+author: "Chuqi Wang 79167724"
+date: "2024-05-11"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Q1:
+```{r}
+getwd()
+setwd("/Users/chuqiwang/Desktop/UCI/STATS205P/hw2")
+ratweight = read.table("RatWeight.txt", header = TRUE)
+```
+```{r}
+J = length(unique(ratweight$Rat))  # number of rats
+N = nrow(ratweight)                # number of observations
+y = ratweight$weight               # All Observations weights
+rat = as.numeric(factor(ratweight$Rat))
+rat_stan = list(
+  J = J,
+  N = N,
+  y = y,
+  rat = rat
+)
+```
+
+```{r}
+library(rstan)
+fit <- stan(file = 'ratweight.stan', data = rat_stan)
+```
+
+```{r}
+print(fit, probs = c(0.025, 0.975)) 
+```
+
+The posterior expectation and 95\% interval for all parameters are shown above.
+
+```{r}
+traceplot(fit, inc_warmup = TRUE)
+plot(fit, plotfun = "hist")
+plot(fit)
+```
+
+### STAN CODE:
+```{r}
+# data {
+#   int<lower=0> J;
+#   int<lower=0> N;
+#   vector[N] y;
+#   int<lower=1, upper=J> rat[N];
+# }
+# 
+# parameters {
+#   real mu0;
+#   real<lower=0> tau0;
+#   vector[J] mu;
+#   vector<lower=0>[J] sigma;
+# }
+# 
+# model {
+#   mu0 ~ normal(0, 1000);
+#   tau0 ~ scaled_inv_chi_square(1, 0.05);
+#   mu ~ normal(mu0, tau0);
+#   sigma ~ scaled_inv_chi_square(1, 0.05);
+#   
+#   for (i in 1:N) {
+#     y[i] ~ normal(mu[rat[i]], sigma[rat[i]]);
+#   }
+# }
+```
+
+
+
+## Q2:
+```{r}
+library(dplyr)
+radon_data = read.csv("radon.csv", header = TRUE)
+```
+
+```{r}
+# sample mean and sample variance
+mean(radon_data$Radon)
+var(radon_data$Radon)
+```
+```{r}
+# sample mean and standard deviation for 8 states
+radon_data %>%
+  group_by(state) %>%
+  summarize(state_mean = mean(Radon, na.rm = TRUE),
+            state_sd = sd(Radon, na.rm = TRUE))
+```
+
+```{r}
+library(rstan)
+
+radon_data$state_index <- as.numeric(factor(radon_data$state))
+data_list <- list(N = nrow(radon_data),
+                  N_states = length(unique(radon_data$state_index)),
+                  state = radon_data$state_index,
+                  radon = radon_data$Radon)
+
+fit2 <- stan(file = 'radon.stan', data = data_list)
+```
+
+```{r}
+print(fit2, probs = c(0.025, 0.975))
+```
+```{r}
+traceplot(fit2, inc_warmup = TRUE)
+plot(fit2, plotfun = "hist")
+plot(fit2)
+```
+
+The hierarchy model in this example is similar as Question 1, I denote the $i^{th}$ observed Radon for the $j^{th}$ state as $y_{ij}$. Assume $y_{ij}\sim N(\mu_j,\sigma^2_j)$ and prior and hyperprior are given by:
+$$\mu_j\sim N(\mu_0,\tau^2_0)$$
+$$\sigma^2_j\sim Inv-\chi^2(1, 0.05)$$
+$$\mu_0\sim N(0, 1000^2)$$
+$$\tau^2_0\sim Inv-\chi^2(1, 0.05)$$
+The posterior expectation and 95\% interval are shown above.
+
+### STAN CODE:
+```{r}
+# data {
+#   int<lower=0> N;
+#   int<lower=0> N_states;
+#   int<lower=1, upper=N_states> state[N];
+#   vector[N] radon;
+# }
+# 
+# parameters {
+#   real mu0;                        
+#   real<lower=0> tau0;
+#   vector[N_states] state_mu; 
+#   vector<lower=0>[N_states] sigma;  
+# }
+# 
+# model {
+#   // Priors
+#   mu0 ~ normal(0, 1000);
+#   tau0 ~ scaled_inv_chi_square(1, 0.05);
+#   sigma ~ scaled_inv_chi_square(1, 0.05);
+#   state_mu ~ normal(mu0, tau0);
+#   
+#   // Model
+#   for (i in 1:N) {
+#     radon[i] ~ normal(state_mu[state[i]], sigma[state[i]]);
+#   }
+# }
+```
+
+
+
+
+
